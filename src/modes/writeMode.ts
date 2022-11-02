@@ -8,6 +8,7 @@ export async function writeMode(session: CDPSession, patterns: string[], store: 
 
     responseInterceptor.listen(async ({ requestId, request, responseHeaders, responseStatusCode }, api) => {
         const rawBody = await api.getRealResponse(requestId);
+        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
         const responseCode = responseStatusCode!;
         const headers = normalizeHeaders(responseHeaders);
         const body = rawBody.toString("binary");

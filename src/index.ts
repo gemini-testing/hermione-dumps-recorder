@@ -1,3 +1,5 @@
+/* eslint @typescript-eslint/no-non-null-assertion: 0 */
+
 import { Page, Target } from "puppeteer-core";
 import PQueue from "p-queue";
 import os from "os";
@@ -5,11 +7,12 @@ import os from "os";
 import { createWorkersRunner } from "./workers";
 import { WorkersRunner } from "./workers/worker";
 import { Store } from "./store";
-import { DumpsPluginConfig, parseConfig } from "./config";
+import { PluginConfig, parseConfig } from "./config";
 import { useModes, readMode, writeMode } from "./modes";
 
-export = (hermione: Hermione, opts: DumpsPluginConfig): void => {
+export = (hermione: Hermione, opts: PluginConfig): void => {
     const config = parseConfig(opts, hermione.config);
+
     if (!config.enabled || hermione.isWorker()) {
         return;
     }
@@ -42,19 +45,19 @@ export = (hermione: Hermione, opts: DumpsPluginConfig): void => {
         );
     };
 
-    hermione.on(hermione.events.RUNNER_START, runner => {
+    hermione.on(hermione.events.RUNNER_START, (runner) => {
         workersRunner = createWorkersRunner(runner);
     });
 
-    hermione.on(hermione.events.SESSION_START, async (browser, info) => {
-        if (!config.browsers.includes(info.browserId)) {
+    hermione.on(hermione.events.SESSION_START, async (browser, {browserId, sessionId}) => {
+        if (!config.browsers.includes(browserId)) {
             return;
         }
 
         const puppeteer = await browser.getPuppeteer();
         const pages = await puppeteer.pages();
 
-        stores.set(info.sessionId, Store.create(config.dumpsDir, workersRunner));
+        stores.set(sessionId, Store.create(config.dumpsDir, workersRunner));
 
         await Promise.all(
             pages.map(async (page: unknown) => {
@@ -62,7 +65,7 @@ export = (hermione: Hermione, opts: DumpsPluginConfig): void => {
                     return;
                 }
 
-                await attachTarget(page as Page, info.sessionId);
+                await attachTarget(page as Page, sessionId);
             }),
         );
 
@@ -73,11 +76,11 @@ export = (hermione: Hermione, opts: DumpsPluginConfig): void => {
                 return;
             }
 
-            await attachTarget(page, info.sessionId);
+            await attachTarget(page, sessionId);
         });
     });
 
-    hermione.on(hermione.events.TEST_BEGIN, test => {
+    hermione.on(hermione.events.TEST_BEGIN, (test) => {
         if (!config.browsers.includes(test.browserId)) {
             return;
         }
@@ -92,9 +95,9 @@ export = (hermione: Hermione, opts: DumpsPluginConfig): void => {
         );
     });
 
-    const cleanStaleStores = (): void => sessionEndedIds.forEach(id => sessionEndedIds.delete(id) && stores.delete(id) && console.log(`deleted ${id}`));
+    const cleanStaleStores = (): void => sessionEndedIds.forEach(id => sessionEndedIds.delete(id) && stores.delete(id));
 
-    hermione.on(hermione.events.TEST_PASS, test => {
+    hermione.on(hermione.events.TEST_PASS, (test) => {
         if (!config.browsers.includes(test.browserId)) {
             return;
         }
@@ -105,6 +108,7 @@ export = (hermione: Hermione, opts: DumpsPluginConfig): void => {
 
         useModes(
             {
+                onPlay: cleanStaleStores,
                 onCreate: () => onWrite(test, { overwrite: false }),
                 onSave: () => onWrite(test, { overwrite: true }),
             },
@@ -112,32 +116,16 @@ export = (hermione: Hermione, opts: DumpsPluginConfig): void => {
         );
     });
 
-    hermione.on(hermione.events.TEST_FAIL, test => {
+    hermione.on(hermione.events.TEST_FAIL, (test) => {
         if (!config.browsers.includes(test.browserId)) {
             return;
         }
 
-        useModes(
-            {
-                onCreate: cleanStaleStores,
-                onSave: cleanStaleStores,
-            },
-            config.mode,
-        );
+        cleanStaleStores();
     });
 
     hermione.on(hermione.events.SESSION_END, (_, { sessionId }) => {
-        const onWrite = (sessionId: string): void => {
-            sessionEndedIds.add(sessionId);
-        };
-
-        useModes(
-            {
-                onCreate: () => onWrite(sessionId),
-                onSave: () => onWrite(sessionId),
-            },
-            config.mode,
-        );
+        sessionEndedIds.add(sessionId);
     });
 
     hermione.on(hermione.events.RUNNER_END, () => queue.onIdle());

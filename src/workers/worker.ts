@@ -11,7 +11,7 @@ export interface WorkersRunner {
     writeDump: writeDump;
 }
 
-export const readDump: readDump = async fileName => {
+export const readDump: readDump = async (fileName) => {
     return fs.promises.readFile(fileName, { encoding: "utf8" }).then(JSON.parse);
 };
 

@@ -37,7 +37,7 @@ export class CdpInterceptor {
     }
 
     public listen(handler: (event: FetchEvent, api: ApiType) => Promise<void>): void {
-        this.session.on("Fetch.requestPaused", async event => handler(event, this.api));
+        this.session.on("Fetch.requestPaused", async (event) => handler(event, this.api));
     }
 
     protected get api(): ApiType {
